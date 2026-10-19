@@ -7,8 +7,9 @@
 # Creates (all idempotent, marked with a "[DEMO]" prefix):
 #   - 2 assessments (Frontend, Backend) compiled from the seeded B7 taxonomy
 #   - 2 vacancies
-#   - 3 sessions: one completed with transcript + coverage + portfolio + fit/gap report,
-#     one running (for Live Monitor), one pending (fresh invite link)
+#   - 4 sessions: one completed with transcript + coverage + portfolio + fit/gap report,
+#     one running (for Live Monitor), one pending (fresh invite link),
+#     one deliberately degraded (four quality findings, expected verdict "invalid")
 #
 # Re-running is a no-op unless SEED_DEMO_REFRESH=1, which deletes the demo rows first.
 module DemoSeed
@@ -64,10 +65,12 @@ module DemoSeed
     completed(frontend, fe_vacancy)
     running(frontend)
     pending(backend)
+    degraded_session = degraded(frontend)
 
     puts '  [demo] done.'
     puts
     puts "  Completed session   : #{Session.unscoped.where(candidate_name: CANDIDATE).maximum(:id)}"
+    puts "  Degraded session    : ##{degraded_session.id} — expected verdict invalid (see /api/v1/sessions/#{degraded_session.id}/quality)"
     puts "  Invite links        :"
     Session.unscoped.where(tenant_id: @tenant_id).order(:id).each do |s|
       puts "    ##{s.id} #{s.status.ljust(7)} #{s.candidate_name.to_s.ljust(24)} http://localhost:5173/interview/#{s.invite_token}"
@@ -155,12 +158,13 @@ module DemoSeed
     record
   end
 
-  def session_for(assessment, status:, end_reason: nil, started_at: nil, ended_at: nil, duration: nil)
+  def session_for(assessment, status:, end_reason: nil, started_at: nil, ended_at: nil, duration: nil,
+                  candidate_name: CANDIDATE)
     Session.unscoped.create!(
       tenant_id:        @tenant_id,
       assessment_id:    assessment.id,
       candidate_id:     CANDIDATE_ID,
-      candidate_name:   CANDIDATE,
+      candidate_name:   candidate_name,
       status:           status,
       end_reason:       end_reason,
       started_at:       started_at,
@@ -393,6 +397,97 @@ module DemoSeed
   def pending(assessment)
     session = session_for(assessment, status: 'pending')
     puts "  [demo] pending session ##{session.id} — invite: http://localhost:5173/interview/#{session.invite_token}"
+  end
+
+  # ── scenario 4: deliberately degraded run (shows the quality findings panel) ─
+  #
+  # Two defects are seeded as data, never by touching the evaluator:
+  #   1. the session claims all_covered while Testing is still partial;
+  #   2. no session_events / coverage_analyses rows were ever written, so the
+  #      closing line has no wrap-up signal and the turns were never analysed.
+
+  def degraded(assessment)
+    session = session_for(
+      assessment,
+      status:         'ended',
+      end_reason:     'all_covered',
+      started_at:     48.minutes.ago,
+      ended_at:       12.minutes.ago,
+      duration:       2160,
+      candidate_name: 'Budi Santoso (Demo)'
+    )
+
+    coverage(session, assessment, states: [
+      ['covered', 5, 'Reducer ownership, render scope and measured typing latency explored in depth'],
+      ['covered', 3, 'Generated API types, view-model mapping and an incremental strict-mode migration'],
+      ['partial', 3, 'Only unit tests and two Playwright flows described; drag interactions never covered']
+    ])
+
+    [
+      ['ai',        "Hi Budi, thanks for joining. Let's start with the React work you're most proud of — what was the hardest state problem you had to solve?"],
+      ['candidate', 'An onboarding builder where users drag steps around while the preview re-renders. The tree was deep, and every keystroke in a step settings panel re-rendered the whole canvas.'],
+      ['ai',        'How did you keep that from turning into a rewrite?'],
+      ['candidate', 'I moved the draft into a reducer with a single action log, memoised the step list on the step ids, and kept the live editing text in local state. The canvas subscribed to the store with one selector per step instead of a selector for the whole tree.'],
+      ['ai',        'What did you measure before and after that change?'],
+      ['candidate', 'Typing latency in the settings panel — it went from around 120 milliseconds to under 40 on the mid-range laptop we tested on. I used the profiler to confirm the step components stopped re-rendering on every keystroke.'],
+      ['ai',        "Let's talk about types. Where do you draw the boundary between what the API returns and what the components consume?"],
+      ['candidate', 'The API types are generated, but components get a mapped view model, because a nullable address and an absent address mean different things in the UI. I keep the mapper in one module so the conversion is testable.'],
+      ['ai',        'Have you had to do that kind of work in an existing JavaScript codebase?'],
+      ['candidate', 'Yes — one dashboard was plain JS. I started by adding types to the API client only, enabled strict mode for that folder, and then lifted components over one at a time when someone touched them.'],
+      ['ai',        'And how do you convince a team not to stop halfway through that migration?'],
+      ['candidate', 'A ratchet in CI: existing files get grandfathered, but every file touched has to pass strict checks. It is visible in the pull request, which is usually incentive enough.'],
+      ['ai',        'Last topic: what does testing look like on that team?'],
+      ['candidate', 'Honestly it is mostly unit tests for the reducer and a couple of Playwright flows for the builder. We never found time to cover the drag interactions, so the most fragile part is the least tested.'],
+      ['ai',        "Thanks for your time — you'll hear back from the team soon."]
+    ].each_with_index { |(speaker, text), index| turn(session, index + 1, speaker, text) }
+
+    portfolio = Portfolio.unscoped.create!(
+      session_id:        session.id,
+      candidate_id:      CANDIDATE_ID,
+      generation_status: 'complete',
+      generated_at:      11.minutes.ago
+    )
+
+    portfolio.portfolio_skills.create!(
+      skill_id:           'SK-ENG-001',
+      skill_label:        'React / Frontend Development Core',
+      is_discovered:      false,
+      ai_level:           2,
+      ai_confidence:      'high',
+      evidence:           [
+        'I moved the draft into a reducer with a single action log, memoised the step list on the step ids, and kept the live editing text in local state.',
+        'Typing latency in the settings panel — it went from around 120 milliseconds to under 40 on the mid-range laptop we tested on.'
+      ],
+      competency_summary: 'Comfortable owning component state and render scope, and measures the result rather than guessing. The work stays local to the editor component; there is no evidence yet of setting a rendering or performance standard for the team.'
+    )
+
+    portfolio.portfolio_skills.create!(
+      skill_id:           'SK-ENG-009',
+      skill_label:        'TypeScript & Type Systems',
+      is_discovered:      false,
+      ai_level:           2,
+      ai_confidence:      'medium',
+      evidence:           [
+        'The API types are generated, but components get a mapped view model, because a nullable address and an absent address mean different things in the UI.',
+        'I started by adding types to the API client only, enabled strict mode for that folder, and then lifted components over one at a time when someone touched them.'
+      ],
+      competency_summary: 'Understands the API/UI type boundary and has run a pragmatic strict-mode migration with a CI ratchet. The evidence is one project deep and the exploration stopped before harder generics or library typing were discussed.'
+    )
+
+    portfolio.portfolio_skills.create!(
+      skill_id:           'SK-ENG-006',
+      skill_label:        'Testing & Quality Assurance',
+      is_discovered:      false,
+      ai_level:           2,
+      ai_confidence:      'low',
+      evidence:           [
+        'Honestly it is mostly unit tests for the reducer and a couple of Playwright flows for the builder. We never found time to cover the drag interactions, so the most fragile part is the least tested.'
+      ],
+      competency_summary: 'Knows the shape of a reasonable test suite and can name what is missing, but describes an incomplete pyramid in practice. Only one topic was explored and the interview closed before the gap could be probed further.'
+    )
+
+    puts "  [demo] degraded demo session ##{session.id} — expected verdict invalid"
+    session
   end
 end
 
