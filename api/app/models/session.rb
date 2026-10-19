@@ -10,6 +10,7 @@ class Session < ApplicationRecord
   has_many :transcript_turns, dependent: :destroy
   has_many :session_events, dependent: :destroy
   has_many :coverage_maps, dependent: :destroy
+  has_many :coverage_analyses, dependent: :destroy
   has_one  :portfolio, dependent: :destroy
 
   validates :invite_token, presence: true, uniqueness: true

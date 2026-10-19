@@ -10,38 +10,69 @@ class CoverageAnalyzerWorker
 
     return if session.ended?
 
-    result = Coverage::Analyzer.new(session: session).call
+    analyzer = Coverage::Analyzer.new(session: session)
+    from_turn, to_turn = analyzer.window_turn_numbers
+    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC, :millisecond)
 
-    apply_updates(session, result[:skill_updates])
-    create_discovered_skills(session, result[:discovered_skills])
+    begin
+      result = analyzer.call
+      apply_updates(session, result[:skill_updates])
+      create_discovered_skills(session, result[:discovered_skills])
 
-    # Pass the IDs of maps just updated this run so we never auto-advance a
-    # skill that was touched in the same job (it isn't stale yet).
-    updated_ids = result[:skill_updates].filter_map { |u| u[:coverage_map_id] }
-    advance_stale_partials(session, exclude_ids: updated_ids)
+      # Pass the IDs of maps just updated this run so we never auto-advance a
+      # skill that was touched in the same job (it isn't stale yet).
+      updated_ids = result[:skill_updates].filter_map { |u| u[:coverage_map_id] }
+      advance_stale_partials(session, exclude_ids: updated_ids)
 
-    SessionEvents::Recorder.call(session, 'coverage_analyzed',
-                                 turn_number: turn_number,
-                                 updated: result[:skill_updates].size,
-                                 discovered: result[:discovered_skills].size)
+      record_ledger(session, analyzer, from_turn, to_turn, started_at,
+                    status: 'succeeded', deltas: result[:skill_updates])
+      SessionEvents::Recorder.call(session, 'coverage_analyzed',
+                                   turn_number: turn_number,
+                                   updated: result[:skill_updates].size,
+                                   discovered: result[:discovered_skills].size)
+      publish_coverage_update(session)
+      # Session-end detection removed from worker (H1 fix) — the middleware owns
+      # session lifecycle because it's the only component with access to both the
+      # Gemini client and the browser WebSocket. The worker updating DB state and
+      # the middleware checking it on the next AI turn avoids the duplicate-end race.
 
-    publish_coverage_update(session)
-    # Session-end detection removed from worker (H1 fix) — the middleware owns
-    # session lifecycle because it's the only component with access to both the
-    # Gemini client and the browser WebSocket. The worker updating DB state and
-    # the middleware checking it on the next AI turn avoids the duplicate-end race.
-
-    Rails.logger.info("[N7] Coverage analyzed for session #{session_id}, turn #{turn_number}")
+      Rails.logger.info("[N7] Coverage analyzed for session #{session_id}, turn #{turn_number}")
+    rescue StandardError => e
+      # N7 failure is non-critical — ledger it, log it, and let the interview continue
+      record_ledger(session, analyzer, from_turn, to_turn, started_at, status: 'failed', error: e.class.name)
+      SessionEvents::Recorder.call(session, 'coverage_analysis_failed',
+                                   turn_number: turn_number, error_class: e.class.name)
+      Rails.logger.error("[N7] Coverage analyzer failed for session #{session_id}: #{e.class} #{e.message}")
+    end
   rescue ActiveRecord::RecordNotFound
     Rails.logger.warn("[N7] Session #{session_id} not found — skipping")
-  rescue => e
-    # N7 failure is non-critical — log and let the interview continue
-    SessionEvents::Recorder.call(Session.find_by(id: session_id), 'coverage_analysis_failed',
-                                 turn_number: turn_number, error_class: e.class.name) if Session.exists?(session_id)
-    Rails.logger.error("[N7] Coverage analyzer failed for session #{session_id}: #{e.class} #{e.message}")
   end
 
   private
+
+  # Never raises into the worker: the interview must survive a ledger write
+  # failing, so that is logged rather than escalated.
+  def record_ledger(session, analyzer, from_turn, to_turn, started_at, status:, deltas: [], error: nil)
+    return if from_turn.to_i.zero?
+
+    # (session_id, window_to_turn) is unique: a re-run of the same window
+    # updates its row instead of dying on RecordNotUnique — a silently missing
+    # ledger row is the class of defect this ledger exists to catch.
+    session.coverage_analyses
+           .find_or_initialize_by(window_to_turn: to_turn)
+           .update!(
+             window_from_turn: from_turn,
+             window_to_turn:   to_turn,
+             prompt_version:   analyzer.prompt_version,
+             model:            ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-2.0-flash-001'),
+             status:           status,
+             latency_ms:       Process.clock_gettime(Process::CLOCK_MONOTONIC, :millisecond) - started_at,
+             applied_deltas:   deltas.map { |d| d.slice(:coverage_map_id, :skill_label, :new_state, :new_probe_count) },
+             error_class:      error
+           )
+  rescue StandardError => e
+    Rails.logger.error("[N7] Failed to record ledger row for session #{session.id}: #{e.message}")
+  end
 
   def apply_updates(session, skill_updates)
     skill_updates.each do |update|

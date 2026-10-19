@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_10_20_000001) do
+ActiveRecord::Schema[7.0].define(version: 2026_10_20_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -66,6 +66,22 @@ ActiveRecord::Schema[7.0].define(version: 2026_10_20_000001) do
     t.index ["portfolio_skill_id"], name: "index_assessor_overrides_on_portfolio_skill_id", unique: true
     t.check_constraint "ai_level >= 1 AND ai_level <= 5", name: "chk_overrides_ai_level"
     t.check_constraint "override_level >= 1 AND override_level <= 5", name: "chk_overrides_override_level"
+  end
+
+  create_table "coverage_analyses", force: :cascade do |t|
+    t.bigint "session_id", null: false
+    t.integer "window_from_turn", null: false
+    t.integer "window_to_turn", null: false
+    t.string "prompt_version", limit: 32, null: false
+    t.string "model", limit: 100
+    t.string "status", limit: 20, default: "succeeded", null: false
+    t.integer "latency_ms"
+    t.jsonb "applied_deltas", default: [], null: false
+    t.string "error_class", limit: 100
+    t.datetime "created_at", default: -> { "now()" }, null: false
+    t.index ["session_id", "created_at"], name: "index_coverage_analyses_on_session_id_and_created_at"
+    t.index ["session_id", "window_to_turn"], name: "idx_coverage_analyses_window", unique: true
+    t.index ["session_id"], name: "index_coverage_analyses_on_session_id"
   end
 
   create_table "coverage_maps", force: :cascade do |t|
@@ -218,6 +234,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_10_20_000001) do
 
   add_foreign_key "assessment_skills", "assessments"
   add_foreign_key "assessor_overrides", "portfolio_skills"
+  add_foreign_key "coverage_analyses", "sessions"
   add_foreign_key "coverage_maps", "sessions"
   add_foreign_key "fit_gap_reports", "portfolios"
   add_foreign_key "fit_gap_reports", "vacancies"

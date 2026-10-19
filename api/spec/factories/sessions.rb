@@ -23,4 +23,12 @@ FactoryBot.define do
     occurred_at { Time.current }
     payload     { {} }
   end
+
+  factory :coverage_analysis do
+    session
+    window_from_turn { 1 }
+    window_to_turn   { 6 }
+    prompt_version   { 'abc123abc123' }
+    status           { 'succeeded' }
+  end
 end
