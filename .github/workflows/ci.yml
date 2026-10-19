@@ -50,6 +50,8 @@ jobs:
         run: bundle exec rails db:create db:migrate
       - name: RSpec
         run: bundle exec rspec
+      - name: Interview quality eval corpus
+        run: bundle exec rspec spec/quality/eval_corpus_spec.rb --format progress
 
   web:
     runs-on: ubuntu-latest

@@ -1,0 +1,61 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Eval scorecard for the interview quality contract.
+#
+#   bin/eval-interview-quality            # all fixtures
+#   bin/eval-interview-quality --verbose  # print every finding
+#
+# Exits non-zero when a fixture's verdict or finding codes drift from the expected
+# values, so CI fails on a prompt/contract regression instead of shipping it.
+
+ENV['RAILS_ENV'] ||= 'development'
+require_relative '../config/environment'
+
+verbose = ARGV.include?('--verbose')
+fixture_dir = Rails.root.join('spec/fixtures/interview_quality')
+fixtures = Dir[fixture_dir.join('*.json')].sort.map { |path| JSON.parse(File.read(path)) }
+
+if fixtures.empty?
+  warn('No fixtures found — expected spec/fixtures/interview_quality/*.json')
+  exit 1
+end
+
+organization = Organization.identify('fixture-corp') ||
+               Organization.create!(name: 'Fixture Corp', scheme: 'fixture-corp',
+                                    identifier: 'fixture-corp', host: 'fixture.local')
+
+puts format('%-34s %-17s %-6s %-8s %s', 'FIXTURE', 'VERDICT', 'SCORE', 'MATCH', 'FINDINGS')
+failures = 0
+
+fixtures.each do |fixture|
+  session = nil
+  ActiveRecord::Base.transaction do
+    session = InterviewQuality::FixtureLoader.call(fixture, tenant_id: organization.id)
+    result  = InterviewQuality::Evaluator.new(session).call
+
+    expected_verdict = fixture.dig('expected', 'verdict')
+    expected_codes   = Array(fixture.dig('expected', 'codes')).sort
+    actual_codes     = result[:findings].map(&:code).sort
+    matched          = result[:verdict] == expected_verdict && actual_codes == expected_codes
+
+    failures += 1 unless matched
+
+    puts format('%-34s %-17s %-6s %-8s %s',
+                fixture.fetch('name')[0, 33],
+                result[:verdict],
+                result[:score],
+                matched ? 'ok' : 'DRIFT',
+                actual_codes.empty? ? '—' : actual_codes.join(', '))
+
+    if verbose && result[:findings].any?
+      result[:findings].each { |f| puts "    #{f.severity}: #{f.message}" }
+    end
+
+    raise ActiveRecord::Rollback
+  end
+end
+
+puts
+puts failures.zero? ? "All #{fixtures.size} fixtures match their expected verdict." : "#{failures} fixture(s) drifted."
+exit(failures.zero? ? 0 : 1)
