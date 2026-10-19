@@ -1,0 +1,24 @@
+{
+  "name": "closing line delivered after the wrap-up signal",
+  "session": { "status": "ended", "end_reason": "all_covered", "duration_seconds": 2280 },
+  "skills": [
+    { "label": "React", "state": "covered", "probes": 5, "last_signal": "Profiling and state partitioning with numbers" },
+    { "label": "Communication", "state": "covered", "probes": 3, "last_signal": "Explained tradeoffs to non-engineers" }
+  ],
+  "turns": [
+    { "n": 1, "speaker": "ai", "text": "Tell me about the most technically challenging project you have worked on recently." },
+    { "n": 2, "speaker": "candidate", "text": "A real-time dashboard with hundreds of updates per second." },
+    { "n": 3, "speaker": "ai", "text": "How was that state flowing before you changed anything?" },
+    { "n": 4, "speaker": "candidate", "text": "Every websocket event went through Redux; profiling showed 80% of renders were unnecessary." },
+    { "n": 5, "speaker": "ai", "text": "How did you keep the team aligned on that change?" },
+    { "n": 6, "speaker": "candidate", "text": "A one-pager with the profiling data, framed as a performance risk." },
+    { "n": 7, "speaker": "ai", "text": "Thanks for your time, you will hear back from the team soon." }
+  ],
+  "events": [
+    { "kind": "session_started", "seconds_ago": 3600 },
+    { "kind": "wrap_up_injected", "seconds_ago": 800 },
+    { "kind": "session_ended", "seconds_ago": 1200 }
+  ],
+  "analyses": [{ "from": 1, "to": 7 }],
+  "expected": { "verdict": "review_required", "codes": ["closing_without_signal"] }
+}

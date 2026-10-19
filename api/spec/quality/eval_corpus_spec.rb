@@ -9,7 +9,21 @@ RSpec.describe 'Interview quality eval corpus' do
 
   FIXTURE_DIR = Rails.root.join('spec/fixtures/interview_quality')
 
-  Dir[FIXTURE_DIR.join('*.json')].sort.each do |path|
+  # Class-level so the example loop (which runs while the group is defined) and
+  # the corpus-size example read the very same list.
+  def self.fixture_paths
+    Dir[FIXTURE_DIR.join('*.json')].sort
+  end
+
+  def fixture_paths
+    self.class.fixture_paths
+  end
+
+  it 'has a non-empty corpus, so the gate cannot silently disappear' do
+    expect(fixture_paths.size).to eq(11)
+  end
+
+  fixture_paths.each do |path|
     fixture = JSON.parse(File.read(path))
     name    = fixture.fetch('name')
 
