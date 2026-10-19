@@ -113,6 +113,8 @@ class AudioWebSocketMiddleware
 
     Sessions::StartHandler.new(session).call unless session.active?
 
+    SessionEvents::Recorder.call(session, 'session_started', resumption: session.gemini_resumption_token.present?)
+
     state.turn_counter = session.transcript_turns.maximum(:turn_number).to_i
 
     # Pre-compute coverage so the first candidate turn has context to inject (no stale/empty cache on turn 1).
@@ -217,6 +219,7 @@ class AudioWebSocketMiddleware
 
     state.gemini_client.inject_context(WRAP_UP_SIGNAL)
     state.wrap_up_injected = true
+    SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'piggyback')
     state.waiting_for_candidate_response = false
     state.coverage_end_timer&.cancel
     Rails.logger.info("[AudioWS] Candidate responded — wrap-up piggybacked on coverage injection (session=#{session.id})")
@@ -226,7 +229,7 @@ class AudioWebSocketMiddleware
     lambda { |text|
       next unless text.present?
 
-      text = sanitize_output_transcription(text)
+      text = sanitize_output_transcription(text, session)
       next unless text.present?
 
       turn_number = state.increment_turn!
@@ -269,7 +272,8 @@ class AudioWebSocketMiddleware
   end
 
   # Strips coverage/time metadata that leaks into output transcription via realtimeInput.text echoes.
-  def sanitize_output_transcription(text)
+  def sanitize_output_transcription(text, session)
+    original = text
     text = text.gsub(/\[COVERAGE[_ ]MAP\][\s\S]*?\[\/COVERAGE[_ ]MAP\]/m, '').strip
     text = text.gsub(/\[COVERAGE[_ ]MAP[^\]]*\]/m, '').strip
     text = text.sub(/\A\s*\{.*?"discovered"\s*:\s*\[.*?\].*?\}\s*/m, '').strip
@@ -279,7 +283,14 @@ class AudioWebSocketMiddleware
     text = text.gsub(/pacing=\S+\s*priority_next=\S*/m, '').strip
     text = text.gsub(/\[Start the interview[^\]]*\]/m, '').strip
     text = text.gsub(/\[SESSION RESUME\][^\n]*/m, '').strip
-    text.gsub(/\[SISTEM\][^\n]*/m, '').strip
+    cleaned = text.gsub(/\[SISTEM\][^\n]*/m, '').strip
+
+    if cleaned.length != original.strip.length
+      SessionEvents::Recorder.call(session, 'system_text_leaked',
+                                   removed_chars: original.strip.length - cleaned.length)
+    end
+
+    cleaned
   end
 
   # Fires after the model's turnComplete — safe to tell the frontend to unmute the mic.
@@ -323,6 +334,7 @@ class AudioWebSocketMiddleware
 
   def build_on_ready(browser_ws, state, session)
     lambda {
+      SessionEvents::Recorder.call(session, 'gemini_connected', resumed: state.reconnecting) unless state.reconnecting
       state.logged_not_ready = false
       if state.reconnecting
         Rails.logger.info("[AudioWS] Gemini reconnected for session #{session.id}")
@@ -364,6 +376,8 @@ class AudioWebSocketMiddleware
     state.latest_resumption_token = resumption_token
     session.update_column(:gemini_resumption_token, resumption_token)
 
+    SessionEvents::Recorder.call(session, 'gemini_reconnect', trigger: 'go_away')
+
     old_client = state.gemini_client
     old_client&.supersede!
 
@@ -395,6 +409,9 @@ class AudioWebSocketMiddleware
     backoff = RECONNECT_BACKOFF[state.reconnect_attempts] || 4
     state.reconnect_attempts += 1
     state.reconnecting = true
+
+    SessionEvents::Recorder.call(state.session, 'gemini_reconnect',
+                                 trigger: 'unexpected_close', attempt: state.reconnect_attempts, code: code)
 
     Rails.logger.warn("[AudioWS] Gemini closed unexpectedly (code=#{code}) — retry #{state.reconnect_attempts}/#{MAX_RECONNECT_ATTEMPTS} in #{backoff}s")
     send_json(browser_ws, type: 'reconnecting') if state.reconnect_attempts == 1
@@ -579,6 +596,7 @@ class AudioWebSocketMiddleware
       delivered = state.gemini_client&.inject_context(WRAP_UP_SIGNAL)
       if delivered
         state.wrap_up_injected = true
+        SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'silence_fallback')
         state.waiting_for_candidate_response = false
         Rails.logger.info("[AudioWS] Candidate silent — wrap-up injected via fallback (session=#{session.id})")
       end
@@ -670,17 +688,19 @@ class AudioWebSocketMiddleware
       enforce_time_ceiling(session, state, browser_ws)
     elsif remaining <= 60 && !state.sent_time_warnings.include?(:warn_60)
       mark_warning_if_delivered(state, :warn_60,
-        "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"wrap_up\": true }")
+        "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"wrap_up\": true }", session)
     elsif remaining <= 120 && !state.sent_time_warnings.include?(:warn_120)
       mark_warning_if_delivered(state, :warn_120,
-        "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true }")
+        "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true }", session)
     end
   end
 
   def enforce_time_ceiling(session, state, browser_ws)
     # Mark :ceiling sent only if inject_context actually delivered — silence pump can return false (C2 fix).
     mark_warning_if_delivered(state, :ceiling,
-      "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true, \"wrap_up\": true }")
+      "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true, \"wrap_up\": true }", session)
+
+    SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'time_ceiling')
 
     state.ending_scheduled = true
 
@@ -698,11 +718,12 @@ class AudioWebSocketMiddleware
     end
   end
 
-  def mark_warning_if_delivered(state, key, signal)
+  def mark_warning_if_delivered(state, key, signal, session)
     return if state.sent_time_warnings.include?(key)
     return unless state.gemini_client.inject_context(signal)
 
     state.sent_time_warnings.add(key)
+    SessionEvents::Recorder.call(state.session, 'time_warning', key: key.to_s)
   end
 
   CLOSING_PHRASES = [

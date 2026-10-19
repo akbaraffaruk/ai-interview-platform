@@ -8,6 +8,7 @@ class Session < ApplicationRecord
 
   belongs_to :assessment
   has_many :transcript_turns, dependent: :destroy
+  has_many :session_events, dependent: :destroy
   has_many :coverage_maps, dependent: :destroy
   has_one  :portfolio, dependent: :destroy
 

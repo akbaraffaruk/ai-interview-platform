@@ -20,6 +20,11 @@ class CoverageAnalyzerWorker
     updated_ids = result[:skill_updates].filter_map { |u| u[:coverage_map_id] }
     advance_stale_partials(session, exclude_ids: updated_ids)
 
+    SessionEvents::Recorder.call(session, 'coverage_analyzed',
+                                 turn_number: turn_number,
+                                 updated: result[:skill_updates].size,
+                                 discovered: result[:discovered_skills].size)
+
     publish_coverage_update(session)
     # Session-end detection removed from worker (H1 fix) — the middleware owns
     # session lifecycle because it's the only component with access to both the
@@ -31,6 +36,8 @@ class CoverageAnalyzerWorker
     Rails.logger.warn("[N7] Session #{session_id} not found — skipping")
   rescue => e
     # N7 failure is non-critical — log and let the interview continue
+    SessionEvents::Recorder.call(Session.find_by(id: session_id), 'coverage_analysis_failed',
+                                 turn_number: turn_number, error_class: e.class.name) if Session.exists?(session_id)
     Rails.logger.error("[N7] Coverage analyzer failed for session #{session_id}: #{e.class} #{e.message}")
   end
 

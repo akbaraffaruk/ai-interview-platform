@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.0].define(version: 2026_05_05_000002) do
+ActiveRecord::Schema[7.0].define(version: 2026_10_20_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -130,6 +130,17 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_05_000002) do
     t.index ["session_id"], name: "index_portfolios_on_session_id", unique: true
   end
 
+  create_table "session_events", force: :cascade do |t|
+    t.bigint "session_id", null: false
+    t.string "kind", limit: 50, null: false
+    t.jsonb "payload", default: {}, null: false
+    t.datetime "occurred_at", default: -> { "now()" }, null: false
+    t.datetime "created_at", default: -> { "now()" }, null: false
+    t.index ["session_id", "kind"], name: "index_session_events_on_session_id_and_kind"
+    t.index ["session_id", "occurred_at"], name: "index_session_events_on_session_id_and_occurred_at"
+    t.index ["session_id"], name: "index_session_events_on_session_id"
+  end
+
   create_table "sessions", force: :cascade do |t|
     t.bigint "tenant_id", null: false
     t.bigint "assessment_id", null: false
@@ -212,6 +223,7 @@ ActiveRecord::Schema[7.0].define(version: 2026_05_05_000002) do
   add_foreign_key "fit_gap_reports", "vacancies"
   add_foreign_key "portfolio_skills", "portfolios"
   add_foreign_key "portfolios", "sessions"
+  add_foreign_key "session_events", "sessions"
   add_foreign_key "sessions", "assessments"
   add_foreign_key "transcript_turns", "sessions"
   add_foreign_key "vacancy_skills", "vacancies"

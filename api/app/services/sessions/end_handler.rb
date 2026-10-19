@@ -23,9 +23,9 @@ module Sessions
 
       reason = 'manual_assessor' unless VALID_REASONS.include?(reason.to_s)
 
-      ActiveRecord::Base.transaction do
-        duration = @session.started_at ? (Time.current - @session.started_at).to_i : nil
+      duration = @session.started_at ? (Time.current - @session.started_at).to_i : nil
 
+      ActiveRecord::Base.transaction do
         @session.update!(
           status:           'ended',
           end_reason:       reason.to_s,
@@ -35,6 +35,8 @@ module Sessions
 
         create_portfolio
       end
+
+      SessionEvents::Recorder.call(@session, 'session_ended', reason: reason.to_s, duration_seconds: duration)
 
       enqueue_portfolio_generation
       publish_status_update

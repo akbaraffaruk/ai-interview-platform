@@ -16,4 +16,11 @@ FactoryBot.define do
       duration_seconds { 2280 }
     end
   end
+
+  factory :session_event do
+    session
+    kind        { 'session_started' }
+    occurred_at { Time.current }
+    payload     { {} }
+  end
 end
