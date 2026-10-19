@@ -24,6 +24,21 @@ FactoryBot.define do
     payload     { {} }
   end
 
+  factory :transcript_turn do
+    session
+    sequence(:turn_number) { |n| n }
+    speaker { 'ai' }
+    text    { 'A transcript line.' }
+  end
+
+  factory :coverage_map do
+    session
+    skill_label   { 'React' }
+    state         { 'covered' }
+    probe_count   { 3 }
+    is_discovered { false }
+  end
+
   factory :coverage_analysis do
     session
     window_from_turn { 1 }
