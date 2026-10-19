@@ -403,3 +403,7 @@ puts ""
 puts "  curl -s -H 'Authorization: Bearer <your_token>' \\"
 puts "       http://localhost:3001/api/v1/assessments"
 puts ""
+
+# ── Demo dataset (assessments, vacancies, sessions, portfolio, fit/gap) ───────
+# Skipped in production; set SEED_DEMO_REFRESH=1 to recreate from scratch.
+require_relative 'seeds/demo'

@@ -1,0 +1,97 @@
+# Local development stack: PostgreSQL + Redis + Rails API + Sidekiq worker.
+#
+#   docker compose -f docker-compose.dev.yml up -d --build
+#   → API  : http://localhost:3001/api/v1/health
+#   → Docs : api/README.md
+#
+# The web app runs on the host (Node is required):
+#   cd web && npm install && cp .env.example .env   # set VITE_DEV_TOKEN
+#   npm run dev                                      # http://localhost:5173
+#
+# Commands inside the API container:
+#   docker compose -f docker-compose.dev.yml exec api bundle exec rails console
+#   docker compose -f docker-compose.dev.yml exec api bundle exec rspec
+#
+# Source code is bind-mounted, so edits on the host are picked up immediately.
+name: ai-interview-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rakamin_development
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rakamin_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: >
+      bash -lc "bundle check || bundle install;
+                bundle exec rails db:prepare db:seed;
+                bundle exec rails server -b 0.0.0.0 -p 3001"
+    environment: &app_env
+      RAILS_ENV: development
+      SECRET_KEY_BASE: dev_only_secret_key_base_change_me
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: rakamin_development
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      REDIS_URL: redis://redis:6379/1
+      ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
+      APP_BASE_URL: http://localhost:3001
+      TOKEN_EXPIRATION_TIME: "259200"
+      # Replace with a real key from Google AI Studio to exercise the live interview flow.
+      GEMINI_API_KEY: dummy-key-replace-me
+      GEMINI_LIVE_MODEL: gemini-2.0-flash-live-001
+      GEMINI_FLASH_MODEL: gemini-2.0-flash-001
+      GEMINI_PRO_MODEL: gemini-2.0-pro-001
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: bash -lc "sleep 10; bundle exec sidekiq -r ./config/environment.rb -C config/sidekiq.yml"
+    environment: *app_env
+    volumes:
+      - ./api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  db-data:
