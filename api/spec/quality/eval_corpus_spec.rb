@@ -20,7 +20,7 @@ RSpec.describe 'Interview quality eval corpus' do
   end
 
   it 'has a non-empty corpus, so the gate cannot silently disappear' do
-    expect(fixture_paths.size).to eq(11)
+    expect(fixture_paths.size).to eq(13)
   end
 
   fixture_paths.each do |path|

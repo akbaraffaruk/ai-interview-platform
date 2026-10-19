@@ -25,6 +25,12 @@ import { qualityCopy } from "@/utils/qualityCopy";
 import { CheckCircle, Mic, MicOff } from "lucide-react";
 import type { CandidateInfo, InterviewState, InterviewSpeaker, TranscriptTurn } from "@/types";
 
+// Bounded refresh of the final verdict after a self-ended interview. The API attaches
+// `quality_verdict` only once the session is `ended`, which happens asynchronously server-side
+// (on `end_session`, or via the 120 s grace timer when that frame is lost).
+const VERDICT_POLL_INTERVAL_MS = 2_000;
+const VERDICT_POLL_MAX_ATTEMPTS = 5;
+
 export default function InterviewPage() {
   const { token } = useParams<{ token: string }>();
   const [candidateInfo, setCandidateInfo] = useState<CandidateInfo | null>(null);
@@ -52,21 +58,40 @@ export default function InterviewPage() {
       .catch(() => setInterviewState("complete"));
   }, [token]);
 
-  // The mount-time verdict is a snapshot. A candidate who finishes in-session would
-  // otherwise see the verdict the evaluator produced before their last turns, so
-  // re-fetch once the interview completes; a failed re-fetch keeps the previous value.
+  // The mount-time verdict is a snapshot. Ending the interview is asynchronous server-side:
+  // `end_session` still has to be processed (and if that frame is lost, only the 120 s grace
+  // timer ends the session), while the API attaches `quality_verdict` only once the session is
+  // `ended`. A single fetch therefore loses the race and falls back to the pre-verdict copy, so
+  // poll until the session reports `ended`, bounded to 5 attempts 2 s apart. A failed poll
+  // keeps the previous copy and is never surfaced to the candidate.
   useEffect(() => {
     if (interviewState !== "complete" || !token) return;
+
     let cancelled = false;
-    sessionsApi.getCandidateInfo(token)
-      .then((res) => {
+    let attempts = 0;
+    let timer: number | undefined;
+
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const res = await sessionsApi.getCandidateInfo(token);
         if (cancelled) return;
         setCandidateInfo((prev) =>
           prev ? { ...prev, quality_verdict: res.data.quality_verdict ?? prev.quality_verdict } : res.data
         );
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+        if (res.data.session_status === "ended") return;
+      } catch {
+        // Intentionally silent: the candidate keeps the copy they already have.
+      }
+      if (cancelled || attempts >= VERDICT_POLL_MAX_ATTEMPTS) return;
+      timer = window.setTimeout(poll, VERDICT_POLL_INTERVAL_MS);
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [interviewState, token]);
 
   const muteRef = useRef<(() => void) | null>(null);

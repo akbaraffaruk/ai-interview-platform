@@ -698,7 +698,9 @@ class AudioWebSocketMiddleware
   end
 
   def enforce_time_ceiling(session, state, browser_ws)
-    # Mark :ceiling sent only if inject_context actually delivered — silence pump can return false (C2 fix).
+    # Mark :ceiling sent only if inject_context actually delivered. inject_context returns
+    # false only in the disconnected/reconnecting window (`!@connected || !@ws`), and the
+    # socket can be gone by the time the ceiling fires (C2 fix).
     if mark_warning_if_delivered(state, :ceiling,
                                  "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true, \"wrap_up\": true }",
                                  session)
@@ -723,8 +725,10 @@ class AudioWebSocketMiddleware
 
   # Records the warning and reports whether it was actually delivered.
   # Callers that gate their own bookkeeping on delivery must use the return value:
-  # `inject_context` returns false while the silence pump owns the stream, and a key
-  # that was already sent must not be reported as delivered again.
+  # `inject_context` returns false only while the Gemini client is not connected or has no
+  # socket (`!@connected || !@ws` — the disconnected/reconnecting window, not the silence
+  # pump owning the stream), and a key that was already sent must not be reported as
+  # delivered again.
   def mark_warning_if_delivered(state, key, signal, session)
     return false if state.sent_time_warnings.include?(key)
     return false unless state.gemini_client.inject_context(signal)

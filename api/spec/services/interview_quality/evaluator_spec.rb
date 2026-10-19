@@ -113,6 +113,30 @@ RSpec.describe InterviewQuality::Evaluator do # rubocop:disable Metrics/BlockLen
     expect(result[:findings].map(&:code)).to include('system_text_leaked')
   end
 
+  it 'emits findings in checks order, so a reordered or severity-grouped report fails here' do
+    session.coverage_maps.create!(skill_label: 'React', state: 'covered', probe_count: 1, is_discovered: false)
+    session.coverage_maps.create!(skill_label: 'Communication', state: 'partial', probe_count: 2, is_discovered: false)
+    ai_turn(1, 'Hi there. [COVERAGE_MAP] {"skills":[]} [/COVERAGE_MAP] Let us begin.')
+    ai_turn(2, 'Thanks for your time — you will hear back from the team soon.')
+    candidate_turn(3, 'First answer.')
+    candidate_turn(4, 'Second answer that no analysis run ever read.')
+    analyse([1, 2])
+
+    result = described_class.new(session).call
+
+    expect(result[:verdict]).to eq('invalid')
+    expect(result[:findings].map(&:code)).to eq(
+      %w[
+        skill_never_covered
+        session_ended_without_coverage
+        promotion_without_probes
+        closing_without_signal
+        system_text_leaked
+        turns_never_analysed
+      ]
+    )
+  end
+
   it 'warns when candidate turns were never analysed' do
     covered_skill('React', probes: 4)
     covered_skill('Communication', probes: 3)

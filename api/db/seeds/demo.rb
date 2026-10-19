@@ -90,6 +90,8 @@ module DemoSeed
     Portfolio.unscoped.where(id: portfolio_ids).delete_all
     TranscriptTurn.unscoped.where(session_id: session_ids).delete_all
     CoverageMap.unscoped.where(session_id: session_ids).delete_all
+    SessionEvent.unscoped.where(session_id: session_ids).delete_all
+    CoverageAnalysis.unscoped.where(session_id: session_ids).delete_all
     Session.unscoped.where(id: session_ids).delete_all
     AssessmentSkill.unscoped.where(assessment_id: assessment_ids).delete_all
     Assessment.unscoped.where(id: assessment_ids).delete_all
@@ -200,7 +202,7 @@ module DemoSeed
     coverage(session, assessment, states: [
       ['covered', 5, 'Explained state partitioning, profiling methodology and test layering with concrete numbers'],
       ['covered', 3, 'Described type boundaries between API and UI, plus one migration of a legacy JS module'],
-      ['partial', 3, 'Testing strategy is unit-heavy; integration coverage only described anecdotally']
+      ['covered', 3, 'Testing pyramid described with concrete layers; e2e layer explicitly acknowledged as the weakest']
     ])
     session.coverage_maps.create!(
       skill_id:      nil,
@@ -238,6 +240,18 @@ module DemoSeed
     ]
 
     script.each_with_index { |(speaker, text), index| turn(session, index + 1, speaker, text) }
+
+    session.session_events.create!(kind: 'session_started',  occurred_at: 55.minutes.ago)
+    session.session_events.create!(kind: 'wrap_up_injected', occurred_at: 20.minutes.ago)
+    session.session_events.create!(kind: 'session_ended',    occurred_at: 17.minutes.ago)
+
+    session.coverage_analyses.create!(
+      window_from_turn: 17,
+      window_to_turn:   23,
+      prompt_version:   Coverage::PromptVersion.digest,
+      model:            ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-2.0-flash-001'),
+      status:           'succeeded'
+    )
 
     portfolio = Portfolio.unscoped.create!(
       session_id:        session.id,
