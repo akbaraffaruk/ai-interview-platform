@@ -11,6 +11,10 @@ describe("qualityCopy", () => {
   it("never tells a candidate their interview went well when it did not", () => {
     expect(qualityCopy("invalid").candidateMessage).toMatch(/review/i);
     expect(qualityCopy("invalid").candidateMessage).not.toMatch(/recorded successfully/i);
+    // The regex above also passes for the trustworthy copy, so pin the two messages
+    // apart and require the invalid copy to disclaim the automated result.
+    expect(qualityCopy("invalid").candidateMessage).not.toBe(qualityCopy("trustworthy").candidateMessage);
+    expect(qualityCopy("invalid").candidateMessage).toMatch(/no automated result/i);
   });
 
   it("falls back safely for an unknown verdict", () => {

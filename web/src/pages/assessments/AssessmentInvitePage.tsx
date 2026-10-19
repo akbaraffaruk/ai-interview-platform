@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -123,20 +123,6 @@ function SessionRow({
   );
 }
 
-async function enrichSessions(sessions: Session[]): Promise<Session[]> {
-  return Promise.all(
-    sessions.map(async (session) => {
-      if (session.status !== "ended") return session;
-      try {
-        const quality = await sessionsApi.getQuality(session.id);
-        return { ...session, quality_verdict: quality.data.verdict };
-      } catch {
-        return session;
-      }
-    })
-  );
-}
-
 export default function AssessmentInvitePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -150,10 +136,29 @@ export default function AssessmentInvitePage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [candidateNameInput, setCandidateNameInput] = useState("");
 
+  // Quality is best-effort: never let it gate the page or re-run on every poll.
+  const enrichedIdsRef = useRef<Set<number>>(new Set());
+
+  const enrichSessionsInBackground = useCallback((list: Session[]) => {
+    for (const session of list) {
+      if (session.status !== "ended" || enrichedIdsRef.current.has(session.id)) continue;
+      enrichedIdsRef.current.add(session.id);
+      sessionsApi.getQuality(session.id)
+        .then((res) => {
+          const verdict = res.data.verdict;
+          setSessions((prev) =>
+            prev.map((s) => (s.id === session.id ? { ...s, quality_verdict: verdict } : s))
+          );
+        })
+        .catch(() => {}); // best-effort: the row keeps rendering without a badge
+    }
+  }, []);
+
   const loadSessions = useCallback(async () => {
     const res = await assessmentsApi.getSessions(Number(id));
-    setSessions(await enrichSessions(res.data.sessions));
-  }, [id]);
+    setSessions(res.data.sessions);
+    enrichSessionsInBackground(res.data.sessions);
+  }, [id, enrichSessionsInBackground]);
 
   useEffect(() => {
     Promise.all([
@@ -161,9 +166,10 @@ export default function AssessmentInvitePage() {
       assessmentsApi.getSessions(Number(id)),
     ]).then(([aRes, sRes]) => {
       setAssessment(aRes.data.assessment);
-      return enrichSessions(sRes.data.sessions).then(setSessions);
+      setSessions(sRes.data.sessions);
+      enrichSessionsInBackground(sRes.data.sessions);
     }).catch(() => {}).finally(() => setLoading(false));
-  }, [id]);
+  }, [id, enrichSessionsInBackground]);
 
   // Poll while any session is live or pending
   useEffect(() => {

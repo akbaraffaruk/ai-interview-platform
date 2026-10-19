@@ -52,6 +52,23 @@ export default function InterviewPage() {
       .catch(() => setInterviewState("complete"));
   }, [token]);
 
+  // The mount-time verdict is a snapshot. A candidate who finishes in-session would
+  // otherwise see the verdict the evaluator produced before their last turns, so
+  // re-fetch once the interview completes; a failed re-fetch keeps the previous value.
+  useEffect(() => {
+    if (interviewState !== "complete" || !token) return;
+    let cancelled = false;
+    sessionsApi.getCandidateInfo(token)
+      .then((res) => {
+        if (cancelled) return;
+        setCandidateInfo((prev) =>
+          prev ? { ...prev, quality_verdict: res.data.quality_verdict ?? prev.quality_verdict } : res.data
+        );
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [interviewState, token]);
+
   const muteRef = useRef<(() => void) | null>(null);
   const unmuteRef = useRef<(() => void) | null>(null);
 

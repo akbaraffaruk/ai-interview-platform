@@ -26,6 +26,14 @@ export default function TranscriptPage() {
       .finally(() => setLoading(false));
   }, [sessionId]);
 
+  // A quality finding links to `#turn-N`; land on that turn instead of the top.
+  useEffect(() => {
+    if (loading) return;
+    const hash = window.location.hash;
+    if (!hash.startsWith("#turn-")) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
+  }, [loading, turns]);
+
   const handleDownload = () => {
     const lines = turns.map((t) => {
       const label = t.speaker === "ai" ? "AI" : "Candidate";
@@ -92,6 +100,7 @@ export default function TranscriptPage() {
             return (
               <div
                 key={turn.id}
+                id={`turn-${turn.turn_number}`}
                 className={`rounded-lg p-4 ${
                   isAI
                     ? "bg-muted border"

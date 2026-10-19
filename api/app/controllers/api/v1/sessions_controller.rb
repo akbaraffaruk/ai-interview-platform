@@ -165,13 +165,18 @@ module Api
           return json_error("Assessment not found", :not_found)
         end
 
-        json_response(
-          session_id:       session.id,
-          role_title:       assessment.name,
-          time_limit_min:   assessment.time_limit_min,
-          session_status:   session.status,
-          quality_verdict:  InterviewQuality::Evaluator.new(session).call[:verdict]
-        )
+        payload = {
+          session_id:     session.id,
+          role_title:     assessment.name,
+          time_limit_min: assessment.time_limit_min,
+          session_status: session.status
+        }
+
+        # The evaluator is expensive and low-signal before the interview ends:
+        # only an ended session carries a verdict.
+        payload[:quality_verdict] = InterviewQuality::Evaluator.new(session).call[:verdict] if session.ended?
+
+        json_response(payload)
       end
 
       private

@@ -1,8 +1,14 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ShieldCheck, type LucideIcon } from "lucide-react";
 import QualityBadge from "./QualityBadge";
 import { qualityCopy } from "@/utils/qualityCopy";
-import type { SessionQuality } from "@/types";
+import type { QualityVerdict, SessionQuality } from "@/types";
+
+const VERDICT_ICONS: Record<QualityVerdict, { Icon: LucideIcon; className: string }> = {
+  invalid: { Icon: AlertTriangle, className: "text-red-600" },
+  review_required: { Icon: AlertTriangle, className: "text-amber-600" },
+  trustworthy: { Icon: ShieldCheck, className: "text-green-600" },
+};
 
 interface Props {
   quality: SessionQuality | null;
@@ -16,15 +22,12 @@ export default function QualityFindingsPanel({ quality, assessmentId, sessionId 
   const copy = qualityCopy(quality.verdict);
   const blockers = quality.findings.filter((f) => f.severity === "blocker");
   const warnings = quality.findings.filter((f) => f.severity === "warning");
+  const { Icon: VerdictIcon, className: verdictIconClass } = VERDICT_ICONS[quality.verdict];
 
   return (
     <section className="rounded-lg border p-4 space-y-3" aria-label="Interview quality">
       <header className="flex items-center gap-2">
-        {blockers.length > 0 ? (
-          <AlertTriangle className="h-4 w-4 text-red-600" aria-hidden />
-        ) : (
-          <ShieldCheck className="h-4 w-4 text-green-600" aria-hidden />
-        )}
+        <VerdictIcon className={`h-4 w-4 ${verdictIconClass}`} aria-hidden />
         <h2 className="text-sm font-semibold">Interview quality</h2>
         <QualityBadge verdict={quality.verdict} />
         <span className="ml-auto text-xs text-muted-foreground">score {quality.score}/100</span>
@@ -36,8 +39,8 @@ export default function QualityFindingsPanel({ quality, assessmentId, sessionId 
         <p className="text-sm text-green-700">No contract violations detected in this session.</p>
       ) : (
         <ul className="space-y-2">
-          {[...blockers, ...warnings].map((finding) => (
-            <li key={finding.code} className="text-sm">
+          {[...blockers, ...warnings].map((finding, index) => (
+            <li key={`${finding.code}-${index}`} className="text-sm">
               <span className={finding.severity === "blocker" ? "font-medium text-red-700" : "font-medium text-amber-700"}>
                 {finding.severity === "blocker" ? "Blocker" : "Warning"}
               </span>{" "}

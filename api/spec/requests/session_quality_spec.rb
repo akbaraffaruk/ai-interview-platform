@@ -27,9 +27,11 @@ RSpec.describe 'Session quality API', type: :request do
     get "/api/v1/sessions/#{session.id}/quality", headers: auth_headers
 
     expect(response).to have_http_status(:ok)
+    expect(json_body.fetch('session_id')).to eq(session.id)
     expect(json_body.fetch('verdict')).to eq('trustworthy')
     expect(json_body.fetch('score')).to eq(100)
     expect(json_body.fetch('findings')).to eq([])
+    expect(json_body.fetch('events')).to eq({})
   end
 
   it 'reports findings for a session that closed early' do
