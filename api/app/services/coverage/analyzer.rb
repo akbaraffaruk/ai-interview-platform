@@ -7,10 +7,15 @@ module Coverage
   class Analyzer
     TURNS_CONTEXT = 6
 
+    # The model that produced a run, exposed so the ledger records the analyser's
+    # actual default instead of re-reading the env var at the write site.
+    attr_reader :model
+
     def initialize(session:, gemini_client: nil)
       @session = session
+      @model = ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-2.0-flash-001')
       @gemini_client = gemini_client || Gemini::HttpClient.new(
-        model:   ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-2.0-flash-001'),
+        model:   @model,
         timeout: 45
       )
     end

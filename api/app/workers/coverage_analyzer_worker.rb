@@ -38,14 +38,19 @@ class CoverageAnalyzerWorker
 
       Rails.logger.info("[N7] Coverage analyzed for session #{session_id}, turn #{turn_number}")
     rescue StandardError => e
-      # N7 failure is non-critical — ledger it, log it, and let the interview continue
+      # N7 failure is non-critical — ledger it (we know the window), then let the
+      # outer net record the event and keep the interview alive.
       record_ledger(session, analyzer, from_turn, to_turn, started_at, status: 'failed', error: e.class.name)
-      SessionEvents::Recorder.call(session, 'coverage_analysis_failed',
-                                   turn_number: turn_number, error_class: e.class.name)
-      Rails.logger.error("[N7] Coverage analyzer failed for session #{session_id}: #{e.class} #{e.message}")
+      raise
     end
   rescue ActiveRecord::RecordNotFound
     Rails.logger.warn("[N7] Session #{session_id} not found — skipping")
+  rescue StandardError => e
+    # The analyser never breaks an interview, but a turn it could not read must still be
+    # visible: the quality evaluator treats a missing ledger row as unanalysed coverage.
+    SessionEvents::Recorder.call(Session.find_by(id: session_id), 'coverage_analysis_failed',
+                                 turn_number: turn_number, error_class: e.class.name)
+    Rails.logger.error("[N7] Coverage analyzer failed for session #{session_id}: #{e.class} #{e.message}")
   end
 
   private
@@ -58,13 +63,15 @@ class CoverageAnalyzerWorker
     # (session_id, window_to_turn) is unique: a re-run of the same window
     # updates its row instead of dying on RecordNotUnique — a silently missing
     # ledger row is the class of defect this ledger exists to catch.
+    # A run that fails after the ledger row was written flips that row to failed with the
+    # deltas we have: "failed" means the run is not trustworthy, not that nothing was applied.
     session.coverage_analyses
            .find_or_initialize_by(window_to_turn: to_turn)
            .update!(
              window_from_turn: from_turn,
              window_to_turn:   to_turn,
              prompt_version:   analyzer.prompt_version,
-             model:            ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-2.0-flash-001'),
+             model:            analyzer.model,
              status:           status,
              latency_ms:       Process.clock_gettime(Process::CLOCK_MONOTONIC, :millisecond) - started_at,
              applied_deltas:   deltas.map { |d| d.slice(:coverage_map_id, :skill_label, :new_state, :new_probe_count) },

@@ -16,4 +16,18 @@ RSpec.describe Coverage::PromptVersion do
 
     expect(stubbed).not_to eq(described_class.digest(original))
   end
+
+  it 'loads the template from the file rather than falling back to the contract string' do
+    expect(described_class.prompt_template).to include('%{skills}')
+    expect(described_class.prompt_template).to include('%{coverage_json}')
+    expect(described_class.prompt_template).to include('%{turn_count}')
+    expect(described_class.prompt_template).to include('%{turns}')
+  end
+
+  it 'changes the digest when the contract string changes' do
+    original = described_class.digest
+    stub_const('Coverage::PromptVersion::CONTRACT', 'coverage-analyzer/v2')
+
+    expect(described_class.digest).not_to eq(original)
+  end
 end
