@@ -27,7 +27,7 @@ import type { CandidateInfo, InterviewState, InterviewSpeaker, TranscriptTurn } 
 
 // Bounded refresh of the final verdict after a self-ended interview. The API attaches
 // `quality_verdict` only once the session is `ended`, which happens asynchronously server-side
-// (on `end_session`, or via the 120 s grace timer when that frame is lost).
+// after the candidate's `end_session` frame.
 const VERDICT_POLL_INTERVAL_MS = 2_000;
 const VERDICT_POLL_MAX_ATTEMPTS = 5;
 
@@ -59,11 +59,12 @@ export default function InterviewPage() {
   }, [token]);
 
   // The mount-time verdict is a snapshot. Ending the interview is asynchronous server-side:
-  // `end_session` still has to be processed (and if that frame is lost, only the 120 s grace
-  // timer ends the session), while the API attaches `quality_verdict` only once the session is
-  // `ended`. A single fetch therefore loses the race and falls back to the pre-verdict copy, so
-  // poll until the session reports `ended`, bounded to 5 attempts 2 s apart. A failed poll
-  // keeps the previous copy and is never surfaced to the candidate.
+  // `end_session` still has to be processed, while the API attaches `quality_verdict` only once
+  // the session is `ended`. A single fetch therefore loses the race and falls back to the
+  // pre-verdict copy, so poll until the session reports `ended`, bounded to 5 attempts 2 s apart.
+  // That budget covers the normal self-end path only: if the `end_session` frame is lost, the
+  // 120 s grace timer ends the session well after the poll gives up, and the candidate keeps the
+  // previous copy. A failed poll keeps the previous copy and is never surfaced to the candidate.
   useEffect(() => {
     if (interviewState !== "complete" || !token) return;
 

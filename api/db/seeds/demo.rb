@@ -243,15 +243,16 @@ module DemoSeed
 
     session.session_events.create!(kind: 'session_started',  occurred_at: 55.minutes.ago)
     session.session_events.create!(kind: 'wrap_up_injected', occurred_at: 20.minutes.ago)
-    session.session_events.create!(kind: 'session_ended',    occurred_at: 17.minutes.ago)
 
     session.coverage_analyses.create!(
-      window_from_turn: 17,
+      window_from_turn: 18,
       window_to_turn:   23,
       prompt_version:   Coverage::PromptVersion.digest,
       model:            ENV.fetch('GEMINI_FLASH_MODEL', 'gemini-2.0-flash-001'),
       status:           'succeeded'
     )
+    session.session_events.create!(kind: 'coverage_analyzed', occurred_at: 18.minutes.ago)
+    session.session_events.create!(kind: 'session_ended',    occurred_at: 17.minutes.ago)
 
     portfolio = Portfolio.unscoped.create!(
       session_id:        session.id,
