@@ -334,7 +334,7 @@ class AudioWebSocketMiddleware
 
   def build_on_ready(browser_ws, state, session)
     lambda {
-      SessionEvents::Recorder.call(session, 'gemini_connected', resumed: state.reconnecting) unless state.reconnecting
+      SessionEvents::Recorder.call(session, 'gemini_connected') unless state.reconnecting
       state.logged_not_ready = false
       if state.reconnecting
         Rails.logger.info("[AudioWS] Gemini reconnected for session #{session.id}")
@@ -697,10 +697,11 @@ class AudioWebSocketMiddleware
 
   def enforce_time_ceiling(session, state, browser_ws)
     # Mark :ceiling sent only if inject_context actually delivered — silence pump can return false (C2 fix).
-    mark_warning_if_delivered(state, :ceiling,
-      "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true, \"wrap_up\": true }", session)
-
-    SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'time_ceiling')
+    if mark_warning_if_delivered(state, :ceiling,
+                                 "[TIME CONTROL:#{SYSTEM_SIGNAL_TOKEN}] { \"time_warning\": true, \"wrap_up\": true }",
+                                 session)
+      SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'time_ceiling')
+    end
 
     state.ending_scheduled = true
 
@@ -718,12 +719,17 @@ class AudioWebSocketMiddleware
     end
   end
 
+  # Records the warning and reports whether it was actually delivered.
+  # Callers that gate their own bookkeeping on delivery must use the return value:
+  # `inject_context` returns false while the silence pump owns the stream, and a key
+  # that was already sent must not be reported as delivered again.
   def mark_warning_if_delivered(state, key, signal, session)
-    return if state.sent_time_warnings.include?(key)
-    return unless state.gemini_client.inject_context(signal)
+    return false if state.sent_time_warnings.include?(key)
+    return false unless state.gemini_client.inject_context(signal)
 
     state.sent_time_warnings.add(key)
-    SessionEvents::Recorder.call(state.session, 'time_warning', key: key.to_s)
+    SessionEvents::Recorder.call(session, 'time_warning', key: key.to_s)
+    true
   end
 
   CLOSING_PHRASES = [
