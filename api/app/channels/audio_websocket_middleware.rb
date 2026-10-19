@@ -214,14 +214,16 @@ class AudioWebSocketMiddleware
 
   # If the AI ended its last turn with a question, piggyback the wrap-up signal on the candidate's
   # next turn so the AI's response to their answer is the closing rather than another question.
+  # Recording is gated on delivery: an injection the client refused must leave both the flag and
+  # the event log untouched, so a later turn (or the silence fallback) can still deliver it.
   def maybe_piggyback_wrap_up(state, session)
     return unless state.waiting_for_candidate_response && !state.wrap_up_injected
+    return unless state.gemini_client.inject_context(WRAP_UP_SIGNAL)
 
-    state.gemini_client.inject_context(WRAP_UP_SIGNAL)
     state.wrap_up_injected = true
-    SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'piggyback')
     state.waiting_for_candidate_response = false
     state.coverage_end_timer&.cancel
+    SessionEvents::Recorder.call(session, 'wrap_up_injected', trigger: 'piggyback')
     Rails.logger.info("[AudioWS] Candidate responded — wrap-up piggybacked on coverage injection (session=#{session.id})")
   end
 
