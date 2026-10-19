@@ -76,7 +76,7 @@ module InterviewQuality
     def check_probe_discipline
       configured_maps.filter_map do |map|
         next unless %w[partial covered].include?(map.state)
-        next if map.probe_count >= 0
+        next if map.probe_count >= 2
 
         Finding.new(
           code: 'promotion_without_probes',
