@@ -53,6 +53,7 @@ RSpec.describe InterviewQuality::Evaluator do # rubocop:disable Metrics/BlockLen
     expect(result[:verdict]).to eq('invalid')
     expect(result[:findings].map(&:code)).to include('session_ended_without_coverage')
     expect(result[:findings].map(&:code)).to include('skill_never_covered')
+    expect(result[:score]).to eq(50)
   end
 
   it 'invalidates a skill promoted to covered without the two-probe minimum' do
@@ -125,5 +126,6 @@ RSpec.describe InterviewQuality::Evaluator do # rubocop:disable Metrics/BlockLen
     expect(result[:verdict]).to eq('review_required')
     finding = result[:findings].find { |f| f.code == 'turns_never_analysed' }
     expect(finding.turn_numbers).to eq([3])
+    expect(result[:score]).to eq(95)
   end
 end

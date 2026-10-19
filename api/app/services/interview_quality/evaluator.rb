@@ -137,7 +137,7 @@ module InterviewQuality
     # ── helpers ─────────────────────────────────────────────────────────────
 
     def configured_maps
-      @configured_maps ||= session.coverage_maps.reject(&:is_discovered)
+      @configured_maps ||= session.coverage_maps.configured.order(:id).to_a
     end
 
     def transcript
