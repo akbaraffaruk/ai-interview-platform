@@ -5,12 +5,13 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import SkillPortfolioCard from "@/components/portfolio/SkillPortfolioCard";
+import QualityFindingsPanel from "@/components/quality/QualityFindingsPanel";
 import { sessionsApi } from "@/services/sessions";
 import { vacanciesApi } from "@/services/vacancies";
 import { portfoliosApi } from "@/services/portfolios";
 import { usePolling } from "@/hooks/usePolling";
 import { ArrowLeft, Download, Loader2, RefreshCw, Zap, FileText } from "lucide-react";
-import type { Portfolio, AssessorOverride, Vacancy } from "@/types";
+import type { Portfolio, AssessorOverride, Vacancy, SessionQuality } from "@/types";
 
 export default function PortfolioPage() {
   const { id, sessionId } = useParams<{ id: string; sessionId: string }>();
@@ -23,6 +24,7 @@ export default function PortfolioPage() {
   const [selectedVacancy, setSelectedVacancy] = useState<string>("");
   const [exporting, setExporting] = useState<"pdf" | "json" | null>(null);
   const [candidateName, setCandidateName] = useState<string | null>(null);
+  const [quality, setQuality] = useState<SessionQuality | null>(null);
 
   const fetchPortfolio = useCallback(async () => {
     const res = await sessionsApi.getPortfolio(Number(sessionId));
@@ -53,6 +55,13 @@ export default function PortfolioPage() {
 
   // Poll while generating
   usePolling(fetchPortfolio, 5000, generating);
+
+  useEffect(() => {
+    sessionsApi
+      .getQuality(Number(sessionId))
+      .then((res) => setQuality(res.data))
+      .catch(() => setQuality(null));
+  }, [sessionId]);
 
   const handleOverrideSaved = (skillId: number, override: AssessorOverride) => {
     setOverrides((prev) => ({ ...prev, [skillId]: override }));
@@ -186,6 +195,12 @@ export default function PortfolioPage() {
       {/* Ready state */}
       {!generating && portfolio?.generation_status === "complete" && (
         <>
+          <QualityFindingsPanel
+            quality={quality}
+            assessmentId={String(id)}
+            sessionId={String(sessionId)}
+          />
+
           {/* Configured skills */}
           <div className="space-y-3">
             <h2 className="text-sm font-semibold">Configured Skills</h2>

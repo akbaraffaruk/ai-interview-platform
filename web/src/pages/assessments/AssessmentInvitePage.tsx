@@ -14,6 +14,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { assessmentsApi } from "@/services/assessments";
+import { sessionsApi } from "@/services/sessions";
+import QualityBadge from "@/components/quality/QualityBadge";
 import { LEVEL_LABELS } from "@/utils/constants";
 import { ArrowLeft, Copy, Check, Eye, Pencil, Clock, Plus, UserRound } from "lucide-react";
 import type { Assessment, Session } from "@/types";
@@ -54,6 +56,7 @@ function SessionRow({
       </div>
 
       <div className="flex items-center gap-3">
+        <QualityBadge verdict={session.quality_verdict} />
         {isPending && (
           <span className="flex items-center gap-1 text-xs text-amber-600">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
@@ -120,6 +123,20 @@ function SessionRow({
   );
 }
 
+async function enrichSessions(sessions: Session[]): Promise<Session[]> {
+  return Promise.all(
+    sessions.map(async (session) => {
+      if (session.status !== "ended") return session;
+      try {
+        const quality = await sessionsApi.getQuality(session.id);
+        return { ...session, quality_verdict: quality.data.verdict };
+      } catch {
+        return session;
+      }
+    })
+  );
+}
+
 export default function AssessmentInvitePage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -135,7 +152,7 @@ export default function AssessmentInvitePage() {
 
   const loadSessions = useCallback(async () => {
     const res = await assessmentsApi.getSessions(Number(id));
-    setSessions(res.data.sessions);
+    setSessions(await enrichSessions(res.data.sessions));
   }, [id]);
 
   useEffect(() => {
@@ -144,7 +161,7 @@ export default function AssessmentInvitePage() {
       assessmentsApi.getSessions(Number(id)),
     ]).then(([aRes, sRes]) => {
       setAssessment(aRes.data.assessment);
-      setSessions(sRes.data.sessions);
+      return enrichSessions(sRes.data.sessions).then(setSessions);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [id]);
 

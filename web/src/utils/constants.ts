@@ -62,6 +62,13 @@ export const FIT_GAP_RESULT_LABELS: Record<string, string> = {
   not_assessed: "Not assessed",
 };
 
+export const QUALITY_TONE_CLASSES: Record<string, string> = {
+  neutral: "bg-neutral-100 text-neutral-700 border-neutral-200",
+  positive: "bg-green-50 text-green-700 border-green-200",
+  warning: "bg-amber-50 text-amber-700 border-amber-200",
+  danger: "bg-red-50 text-red-700 border-red-200",
+};
+
 export const FIT_GAP_RESULT_CLASSES: Record<string, string> = {
   match: "text-green-700 bg-green-50",
   gap: "text-amber-700 bg-amber-50",

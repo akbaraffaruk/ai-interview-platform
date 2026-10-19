@@ -41,6 +41,7 @@ export interface Session {
   invite_url: string;
   status: "pending" | "active" | "ended";
   end_reason?: string;
+  quality_verdict?: QualityVerdict;
   started_at?: string;
   ended_at?: string;
   duration_seconds?: number;
@@ -159,11 +160,29 @@ export interface SkillTaxonomy {
   l5_anchor: string;
 }
 
+export type QualityVerdict = "trustworthy" | "review_required" | "invalid";
+
+export interface QualityFinding {
+  code: string;
+  severity: "blocker" | "warning";
+  message: string;
+  turn_numbers: number[];
+}
+
+export interface SessionQuality {
+  session_id: number;
+  verdict: QualityVerdict;
+  score: number;
+  findings: QualityFinding[];
+  events: Record<string, number>;
+}
+
 export interface CandidateInfo {
   session_id: number;
   role_title: string;
   time_limit_min: number;
   session_status: string;
+  quality_verdict?: QualityVerdict;
 }
 
 export interface PaginationMeta {

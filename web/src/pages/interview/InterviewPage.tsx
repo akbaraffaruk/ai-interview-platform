@@ -21,6 +21,7 @@ import { useAudioPlayback } from "@/hooks/useAudioPlayback";
 import { useAudioWebSocket } from "@/hooks/useAudioWebSocket";
 import { sessionsApi } from "@/services/sessions";
 import HardwareCheck from "@/components/HardwareCheck";
+import { qualityCopy } from "@/utils/qualityCopy";
 import { CheckCircle, Mic, MicOff } from "lucide-react";
 import type { CandidateInfo, InterviewState, InterviewSpeaker, TranscriptTurn } from "@/types";
 
@@ -233,9 +234,7 @@ export default function InterviewPage() {
         <div className="text-4xl">✅</div>
         <h2 className="text-xl font-semibold">Interview Complete</h2>
         <p className="text-sm text-muted-foreground">
-          Thank you. The interview has been recorded.
-          <br />
-          The hiring team will review your results and follow up with you.
+          {qualityCopy(candidateInfo?.quality_verdict).candidateMessage}
         </p>
       </div>
     );

@@ -52,4 +52,14 @@ RSpec.describe 'Session quality API', type: :request do
 
     expect(response).to have_http_status(:not_found)
   end
+
+  it 'reports the quality verdict to the candidate without authentication' do
+    session = create(:session, :ended, assessment: assessment, tenant_id: organization.id, end_reason: 'time_ceiling')
+    session.coverage_maps.create!(skill_label: 'React', state: 'partial', probe_count: 2)
+
+    get "/api/v1/sessions/#{session.invite_token}/candidate"
+
+    expect(response).to have_http_status(:ok)
+    expect(json_body.fetch('quality_verdict')).to eq('review_required')
+  end
 end
