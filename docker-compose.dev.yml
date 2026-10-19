@@ -61,7 +61,7 @@ services:
       DB_PASSWORD: postgres
       REDIS_URL: redis://redis:6379/1
       ALLOWED_ORIGINS: "http://localhost:5173,http://127.0.0.1:5173"
-      APP_BASE_URL: http://localhost:3001
+      APP_BASE_URL: http://localhost:5173
       TOKEN_EXPIRATION_TIME: "259200"
       # Replace with a real key from Google AI Studio to exercise the live interview flow.
       GEMINI_API_KEY: dummy-key-replace-me
